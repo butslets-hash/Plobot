@@ -1,0 +1,1646 @@
+--[[
+  CHATBOT (v9) - Versão 100% Tela (ScreenGui) com Botão de Configurações Direto na Tela
+  A API key NÃO fica no código: quem usa digita a própria key na tela de bloqueio.
+  Sons: se algum não tocar, troque o ID na tabela SONS.
+]]
+
+-- Estes 3 valores são preenchidos pelo botão "Copiar" da tela final.
+-- Deixe como estão para o script perguntar idioma, tema e API key na primeira vez.
+local API_KEY = ""
+local LANG = nil   -- "pt", "en" ou "es"
+local THEME = nil  -- "branco", "preto", "vidro", "fogo", "halloween", "christmas" ou "terminal"
+
+local MODEL_URL = "https://api.openai.com/v1/responses"
+local MODEL_NAME = "gpt-6-luna"
+local TIMEOUT = 60
+local DISCORD = "https://discord.gg/MB4JMzM4m"
+local W, H = 260, 300
+
+local SONS = {
+    clique   = "rbxasset://sounds/button.wav",
+    ok       = "rbxasset://sounds/electronicpingshort.wav",
+    msg      = "rbxasset://sounds/swoosh.wav",
+    explosao = "rbxasset://sounds/Explosion.wav",
+    abobora  = "rbxasset://sounds/uuhhh.mp3",
+    digitar  = "rbxasset://sounds/clickfast.wav",
+}
+
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local UIS = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local TextChatService = game:GetService("TextChatService")
+local RS = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
+local Debris = game:GetService("Debris")
+local LP = Players.LocalPlayer
+
+local httpRequest = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+
+local running = true
+local conns = {}
+local function track(c) table.insert(conns, c) return c end
+
+local function trim200(s)
+    local n = utf8.len(s)
+    if n and n > 200 then s = s:sub(1, utf8.offset(s, 201) - 1) end
+    return s
+end
+
+local function clean(t)
+    t = t:gsub("%*%*", "")
+    t = t:gsub("\n%* ", "\n• ")
+    t = t:gsub("^%* ", "• ")
+    t = t:gsub("#+ ", "")
+    return t
+end
+
+local function sfx(id, vol)
+    if not id or id == "" then return end
+    local s = Instance.new("Sound")
+    s.SoundId = id
+    s.Volume = vol or 0.5
+    s.Parent = SoundService
+    s:Play()
+    Debris:AddItem(s, 6)
+end
+
+local function new(class, props, parent)
+    local o = Instance.new(class)
+    for k, v in pairs(props or {}) do o[k] = v end
+    if parent then o.Parent = parent end
+    return o
+end
+
+local function pad(o, l, t, r, b)
+    return new("UIPadding", { PaddingLeft = UDim.new(0, l), PaddingTop = UDim.new(0, t), PaddingRight = UDim.new(0, r), PaddingBottom = UDim.new(0, b) }, o)
+end
+
+----------------------------------------------------------------
+-- TEXTOS (português, inglês e espanhol)
+----------------------------------------------------------------
+local TXT = {
+    pt = {
+        chat = "Chat", game = "Jogo", send = "Enviar", placeholder = "Converse comigo...",
+        hello = "Oi! Pode conversar ou pedir dicas.", thinking = "pensando", queue = "na fila",
+        copy = "Copiar", copied = "Copiado!", noClip = "Sem clipboard",
+        err = "Erro",
+        config = "Config", cfgTitle = "MODO DA IA",
+        mLow = "Inferior · curto e rápido", mMed = "Médio · normal", mHigh = "Hard · inteligente",
+        noMode = "Nenhum ligado · usa Médio", active = "Ativo: ",
+        newConv = "Abrir conversa nova", theme = "Tema: ", lang = "Idioma: ",
+        playerMode = "MODO JOGADOR", hint = "Ligue para ver as mensagens do chat do servidor.",
+        add = "Adicionar", askQ = "Resposta ou pergunta?", answer = "Resposta", question = "Pergunta",
+        paste = "COLAR NO CHAT", generating = "Gerando...", sent = "Enviado no chat!",
+        sendFail = "Não consegui enviar neste jogo. Tente de novo.",
+        langQ = "Qual é o seu idioma?", themeQ = "Qual tema você quer?",
+        discordMsg = "Quer mais? Fale conosco.", discordCopy = "Copiar convite",
+        keyTitle = "Coloque sua API key", keyPh = "Cole sua API key aqui",
+        keyOk = "Isto está correto", keyBad = "Isto não é uma API key", cont = "Continuar",
+        keyHelp = "Não tem uma API key? Peça ajuda para nossa comunidade",
+        readyTitle = "Passe-bot", readyTop = "Inicie sua IA sem dificuldades!",
+        passeTitle = "Passe-Bot",
+        passeHint = "Já iniciou uma API key e tem um Passe-Bot? Cole aqui. Caso esteja iniciando pela primeira vez, pule, por favor.",
+        passeOk = "Confirmar", passeSkip = "Pular", passePh = "Cole o Passe-Bot aqui",
+        passeBad = "Esse Passe-Bot não é válido. Cole o bloco inteiro.",
+        helpPasse = "Se você esteja visitando isto pela primeira vez, pule. Quando você coloca a key e abre o menu, aparece um Passe-Bot para você não precisar passar pelas perguntas todas as vezes.",
+        helpJogo = "Esta aba serve para responder e perguntar algo inventado no chat com a IA! Aperte no botão que aparece e aparecerá um campo onde aparecerão o que comentam no chat (Roblox). Aperte em um e escolha Pergunta ou Resposta, e veja a IA respondendo aquilo. Após terminar, aparecerá um botão para colar aquilo no chat instantaneamente!",
+        readyNote = "Não quer passar mais por estas perguntas? Pegue o seu Script já configurado, com a página da API removida!",
+        readyTheme = "Tema pode ser modificado nas configurações!",
+        th_branco = "Branco", th_preto = "Preto", th_vidro = "Vidro", th_fogo = "Fogo",
+        th_halloween = "Halloween", th_christmas = "Christmas", th_terminal = "Terminal",
+        musicTitle = "BOOMBOX · ID de música", musicPh = "Cole o ID do áudio aqui",
+        musicPlay = "TOCAR", musicStop = "PARAR",
+        musicNone = "Nenhuma música tocando", musicBad = "ID inválido. Use só números.",
+        musicPlaying = "Tocando o ID: ",
+    },
+    en = {
+        chat = "Chat", game = "Game", send = "Send", placeholder = "Talk to me...",
+        hello = "Hi! Chat with me or ask for tips.", thinking = "thinking", queue = "in queue",
+        copy = "Copy", copied = "Copied!", noClip = "No clipboard",
+        err = "Error",
+        config = "Settings", cfgTitle = "AI MODE",
+        mLow = "Lower · short and fast", mMed = "Medium · normal", mHigh = "Hard · smart",
+        noMode = "None on · uses Medium", active = "Active: ",
+        newConv = "Start new conversation", theme = "Theme: ", lang = "Language: ",
+        playerMode = "PLAYER MODE", hint = "Turn it on to see the server chat messages.",
+        add = "Add", askQ = "Answer or question?", answer = "Answer", question = "Question",
+        paste = "PASTE IN CHAT", generating = "Generating...", sent = "Sent to chat!",
+        sendFail = "Couldn't send in this game. Try again.",
+        langQ = "What is your language?", themeQ = "Which theme do you want?",
+        discordMsg = "Want more? Contact us.", discordCopy = "Copy invite",
+        keyTitle = "Enter your API key", keyPh = "Paste your API key here",
+        keyOk = "This is correct", keyBad = "This is not an API key", cont = "Continue",
+        keyHelp = "Don't have an API key? Ask our community for help",
+        readyTitle = "Passe-bot", readyTop = "Start your AI without any trouble!",
+        passeTitle = "Passe-Bot",
+        passeHint = "Already started an API key and have a Passe-Bot? Paste it here. If this is your first time, please skip.",
+        passeOk = "Confirm", passeSkip = "Skip", passePh = "Paste the Passe-Bot here",
+        passeBad = "This Passe-Bot is not valid. Paste the whole block.",
+        helpPasse = "If you are visiting this for the first time, skip. When you put your key and open the menu, a Passe-Bot appears so you don't have to go through all the questions every time.",
+        helpJogo = "This tab is for answering and asking about something made up in the chat with the AI! Press the button that appears and a field will show what people are saying in the chat (Roblox). Press one and choose Question or Answer, and see the AI responding to it. When you're done, a button will appear to paste it into the chat instantly!",
+        readyNote = "Don't want to go through these questions again? Get your script already set up, with the API page removed!",
+        readyTheme = "The theme can be changed in the settings!",
+        th_branco = "White", th_preto = "Black", th_vidro = "Glass", th_fogo = "Fire",
+        th_halloween = "Halloween", th_christmas = "Christmas", th_terminal = "Terminal",
+        musicTitle = "BOOMBOX · Music ID", musicPh = "Paste the audio ID here",
+        musicPlay = "PLAY", musicStop = "STOP",
+        musicNone = "No music playing", musicBad = "Invalid ID. Use numbers only.",
+        musicPlaying = "Playing ID: ",
+    },
+    es = {
+        chat = "Chat", game = "Juego", send = "Enviar", placeholder = "Háblame...",
+        hello = "¡Hola! Puedes conversar ou pedir consejos.", thinking = "pensando", queue = "en cola",
+        copy = "Copiar", copied = "¡Copiado!", noClip = "Sin portapapeles",
+        err = "Error",
+        config = "Ajustes", cfgTitle = "MODO DE IA",
+        mLow = "Inferior · corto y rápido", mMed = "Medio · normal", mHigh = "Hard · inteligente",
+        noMode = "Ninguno activo · usa Medio", active = "Activo: ",
+        newConv = "Abrir conversación nueva", theme = "Tema: ", lang = "Idioma: ",
+        playerMode = "MODO JOGADOR", hint = "Actívalo para ver los mensajes del chat del servidor.",
+        add = "Añadir", askQ = "¿Respuesta o pregunta?", answer = "Respuesta", question = "Pregunta",
+        paste = "PEGAR EN EL CHAT", generating = "Generando...", sent = "¡Enviado al chat!",
+        sendFail = "No pude enviar en este juego. Intenta de nuevo.",
+        langQ = "¿Cuál es tu idioma?", themeQ = "¿Qué tema quieres?",
+        discordMsg = "¿Quieres más? Escríbenos.", discordCopy = "Copiar invitación",
+        keyTitle = "Ingresa tu API key", keyPh = "Pega tu API key aquí",
+        keyOk = "Esto está bien", keyBad = "Esto no es una API key", cont = "Continuar",
+        keyHelp = "¿No tienes una API key? Pide ayuda a nuestra comunidad",
+        readyTitle = "Passe-bot", readyTop = "¡Inicia tu IA sin dificultades!",
+        passeTitle = "Passe-Bot",
+        passeHint = "¿Ya tienes una API key y un Passe-Bot? Pégalo aquí. Si es tu primera vez, por favor sáltalo.",
+        passeOk = "Confirmar", passeSkip = "Saltar", passePh = "Pega el Passe-Bot aquí",
+        passeBad = "Este Passe-Bot não es válido. Pega el bloque completo.",
+        helpPasse = "Si es tu primera vez aquí, sáltalo. Cuando pones tu key y abres el menú, aparece un Passe-Bot para que no tengas que pasar por todas las preguntas cada vez.",
+        helpJogo = "¡Esta pestaña sirve para responder y preguntar algo inventado en el chat con la IA! Pulsa el botón que aparece y verás un campo con lo que comentan en el chat (Roblox). Pulsa uno y elige Pregunta o Respuesta, y mira cómo la IA responde. Al terminar, aparecerá un botón para pegarlo en el chat al instante.",
+        readyNote = "¿No quieres pasar otra vez por estas preguntas? ¡Consigue tu script ya configurado, sin la página de la API!",
+        readyTheme = "¡El tema se puede cambiar en los ajustes!",
+        th_branco = "Blanco", th_preto = "Negro", th_vidro = "Cristal", th_fogo = "Fuego",
+        th_halloween = "Halloween", th_christmas = "Christmas", th_terminal = "Terminal",
+        musicTitle = "BOOMBOX · ID de música", musicPh = "Pega el ID del audio aquí",
+        musicPlay = "TOCAR", musicStop = "PARAR",
+        musicNone = "Ninguna música sonando", musicBad = "ID inválido. Usa solo números.",
+        musicPlaying = "Sonando el ID: ",
+    },
+}
+local LANGLABEL = { pt = "Português", en = "English", es = "Español" }
+local LANGNAME = { pt = "Brazilian Portuguese", en = "English", es = "Spanish" }
+local LANG_ORDER = { "pt", "en", "es" }
+
+local JOGO_PROMPTS = {
+    pt = {
+        system = "Você é um jogador comum de Roblox conversando agora no chat do servidor. Escreva como um jogador de verdade: informal, natural, no máximo 150 caracteres, sem aspas, nunca diga que é uma IA e sem explicações. Responda SEMPRE em português brasileiro, mesmo que a mensagem original esteja em outro idioma. Responda apenas com o texto da mensagem.",
+        answer = "Escreva a RESPOSTA que você daria para esta mensagem.",
+        question = "Escreva uma PERGUNTA que você faria em reação a esta mensagem.",
+        from = "Mensagem de ",
+    },
+    en = {
+        system = "You are an ordinary Roblox player chatting in the game's server chat right now. Write like a real player: casual, natural, at most 150 characters, no quotes, never say you are an AI, no explanations. ALWAYS reply in English, even if the original message is in another language. Reply only with the message text.",
+        answer = "Write the ANSWER you would give to this message.",
+        question = "Write a QUESTION you would ask in reaction to this message.",
+        from = "Message from ",
+    },
+    es = {
+        system = "Eres un jugador normal de Roblox chateando ahora mismo en el chat del servidor. Escribe como un jugador de verdad: informal, natural, máximo 150 caracteres, sin comillas, nunca digas que eres una IA y sin explicaciones. Responde SIEMPRE en español, aunque el mensaje original esté en otro idioma. Responde solo con el texto del mensaje.",
+        answer = "Escribe la RESPUESTA que darías a este mensaje.",
+        question = "Escribe una PREGUNTA que harías como reacción a este mensaje.",
+        from = "Mensaje de ",
+    },
+}
+
+local RULES = {
+    pt = {
+        inferior = "Responda em no máximo 2 frases curtas, direto ao ponto.",
+        medio = "Responda de forma normal, clara e equilibrada.",
+        hard = "Pense com cuidado e responda de forma inteligente, completa e bem raciocinada.",
+    },
+    en = {
+        inferior = "Answer in at most 2 short sentences, straight to the point.",
+        medio = "Answer in a normal, clear and balanced way.",
+        hard = "Think carefully and answer in a smart, complete and well-reasoned way.",
+    },
+    es = {
+        inferior = "Responde en máximo 2 frases cortas, directo al punto.",
+        medio = "Responde de forma normal, clara y equilibrada.",
+        hard = "Piensa con cuidado y responde de forma inteligente, completa y bien razonada.",
+    },
+}
+local TOKENS = { inferior = 4096, medio = 8192, hard = 16384 }
+local MODE_LIST = {
+    { key = "inferior", lk = "mLow" },
+    { key = "medio", lk = "mMed" },
+    { key = "hard", lk = "mHigh" },
+}
+
+local function curLang() return (LANG and TXT[LANG]) and LANG or "pt" end
+local function L(k)
+    local t = TXT[curLang()]
+    return t[k] or TXT.pt[k] or k
+end
+
+----------------------------------------------------------------
+-- SISTEMA DA IA
+----------------------------------------------------------------
+local AI = { mode = "medio" }
+
+function AI.ask(system, contents, callback)
+    if not httpRequest then
+        return callback(nil, "Seu executor não tem a função request.")
+    end
+    if API_KEY == "" then
+        return callback(nil, "Falta a API key.")
+    end
+    local done = false
+    local function finish(text, err)
+        if done then return end
+        done = true
+        callback(text, err)
+    end
+    task.delay(TIMEOUT, function()
+        finish(nil, "Tempo esgotado. Tente de novo.")
+    end)
+
+    local mode = AI.mode or "medio"
+    local instructions = system .. "\n\n" .. RULES[curLang()][mode]
+
+    local input = {}
+    for _, c in ipairs(contents) do
+        local t = {}
+        for _, p in ipairs(c.parts or {}) do
+            if type(p.text) == "string" then table.insert(t, p.text) end
+        end
+        table.insert(input, {
+            role = (c.role == "model") and "assistant" or "user",
+            content = table.concat(t, "\n"),
+        })
+    end
+
+    task.spawn(function()
+        local ok, res = pcall(httpRequest, {
+            Url = MODEL_URL,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json",
+                ["Authorization"] = "Bearer " .. API_KEY,
+            },
+            Body = HttpService:JSONEncode({
+                model = MODEL_NAME,
+                instructions = instructions,
+                input = input,
+                max_output_tokens = TOKENS[mode],
+                store = false,
+            }),
+        })
+        if not ok or type(res) ~= "table" then
+            return finish(nil, "Sem resposta do executor. Ele precisa ter a função request.")
+        end
+        local okj, data = pcall(HttpService.JSONDecode, HttpService, res.Body or "")
+        if not okj or type(data) ~= "table" then
+            return finish(nil, "Resposta inválida (HTTP " .. tostring(res.StatusCode) .. ").")
+        end
+        if data.error then
+            local emsg = type(data.error) == "table" and data.error.message or data.error
+            return finish(nil, "API: " .. tostring(emsg))
+        end
+        local out = {}
+        if type(data.output) == "table" then
+            for _, item in ipairs(data.output) do
+                if item.type == "message" and type(item.content) == "table" then
+                    for _, c in ipairs(item.content) do
+                        if c.type == "output_text" and type(c.text) == "string" then
+                            table.insert(out, c.text)
+                        end
+                    end
+                end
+            end
+        end
+        local text = table.concat(out)
+        if text == "" and type(data.output_text) == "string" then
+            text = data.output_text
+        end
+        if text == "" then
+            local why = (data.incomplete_details and data.incomplete_details.reason) or data.status or "vazio"
+            return finish(nil, "A IA não respondeu (" .. tostring(why) .. ").")
+        end
+        finish(text)
+    end)
+end
+
+----------------------------------------------------------------
+-- TEMAS E REGISTRO
+----------------------------------------------------------------
+local THEMES = {
+    branco = {
+        bg = Color3.fromRGB(250, 250, 250), panel = Color3.fromRGB(236, 236, 236),
+        text = Color3.fromRGB(20, 20, 20), muted = Color3.fromRGB(105, 105, 105), border = Color3.fromRGB(40, 40, 40),
+        accent = Color3.fromRGB(20, 20, 20), accentText = Color3.fromRGB(250, 250, 250),
+        btn = Color3.fromRGB(255, 255, 255), btnText = Color3.fromRGB(20, 20, 20),
+    },
+    preto = {
+        bg = Color3.fromRGB(0, 0, 0), panel = Color3.fromRGB(12, 12, 12),
+        text = Color3.fromRGB(240, 240, 240), muted = Color3.fromRGB(125, 125, 125), border = Color3.fromRGB(120, 120, 120),
+        accent = Color3.fromRGB(240, 240, 240), accentText = Color3.fromRGB(0, 0, 0),
+        btn = Color3.fromRGB(0, 0, 0), btnText = Color3.fromRGB(240, 240, 240),
+    },
+    vidro = {
+        bg = Color3.fromRGB(38, 40, 46), panel = Color3.fromRGB(62, 66, 74),
+        text = Color3.fromRGB(255, 255, 255), muted = Color3.fromRGB(210, 214, 222), border = Color3.fromRGB(255, 255, 255),
+        accent = Color3.fromRGB(235, 238, 244), accentText = Color3.fromRGB(28, 30, 36),
+        btn = Color3.fromRGB(120, 124, 134), btnText = Color3.fromRGB(255, 255, 255),
+        bgT = 0.55, panelT = 0.6, btnT = 0.35,
+    },
+    fogo = {
+        bg = Color3.fromRGB(32, 8, 2), panel = Color3.fromRGB(56, 16, 4),
+        text = Color3.fromRGB(255, 232, 196), muted = Color3.fromRGB(255, 160, 90), border = Color3.fromRGB(255, 95, 25),
+        accent = Color3.fromRGB(255, 135, 25), accentText = Color3.fromRGB(35, 8, 0),
+        btn = Color3.fromRGB(78, 22, 4), btnText = Color3.fromRGB(255, 224, 176),
+    },
+    halloween = {
+        bg = Color3.fromRGB(22, 10, 2), panel = Color3.fromRGB(44, 20, 4),
+        text = Color3.fromRGB(255, 226, 180), muted = Color3.fromRGB(230, 150, 70), border = Color3.fromRGB(255, 120, 20),
+        accent = Color3.fromRGB(255, 120, 20), accentText = Color3.fromRGB(20, 8, 0),
+        btn = Color3.fromRGB(70, 32, 6), btnText = Color3.fromRGB(255, 200, 120),
+    },
+    christmas = {
+        bg = Color3.fromRGB(112, 114, 120), panel = Color3.fromRGB(142, 144, 150),
+        text = Color3.fromRGB(255, 255, 255), muted = Color3.fromRGB(225, 225, 230), border = Color3.fromRGB(205, 205, 212),
+        accent = Color3.fromRGB(238, 238, 244), accentText = Color3.fromRGB(58, 60, 68),
+        btn = Color3.fromRGB(92, 94, 102), btnText = Color3.fromRGB(255, 255, 255),
+    },
+    terminal = {
+        bg = Color3.fromRGB(0, 0, 0), panel = Color3.fromRGB(3, 20, 7),
+        text = Color3.fromRGB(90, 255, 120), muted = Color3.fromRGB(40, 160, 70), border = Color3.fromRGB(40, 210, 85),
+        accent = Color3.fromRGB(70, 255, 110), accentText = Color3.fromRGB(0, 22, 6),
+        btn = Color3.fromRGB(6, 42, 14), btnText = Color3.fromRGB(90, 255, 120),
+    },
+}
+local THEME_ORDER = { "branco", "preto", "vidro", "fogo", "halloween", "christmas", "terminal" }
+local GREEN_OK = Color3.fromRGB(60, 190, 90)
+local RED_BAD = Color3.fromRGB(220, 70, 70)
+
+local function theme() return THEMES[THEME or "preto"] or THEMES.preto end
+
+local gui
+local regs = {}
+
+local function paintBtn(b)
+    local t = theme()
+    local on = b:GetAttribute("on") == true
+    b.BackgroundColor3 = on and t.accent or t.btn
+    b.BackgroundTransparency = on and 0 or (t.btnT or 0)
+    b.TextColor3 = on and t.accentText or t.btnText
+end
+
+local function setOn(b, v)
+    b:SetAttribute("on", v and true or false)
+    paintBtn(b)
+end
+
+local function applyRole(o, role)
+    local t = theme()
+    if role == "bg" then
+        o.BackgroundColor3 = t.bg
+        o.BackgroundTransparency = t.bgT or 0
+    elseif role == "panel" then
+        o.BackgroundColor3 = t.panel
+        o.BackgroundTransparency = t.panelT or 0
+    elseif role == "text" then
+        o.TextColor3 = t.text
+    elseif role == "muted" then
+        o.TextColor3 = t.muted
+    elseif role == "border" then
+        o.Color = t.border
+    elseif role == "btn" then
+        paintBtn(o)
+    end
+end
+
+local function applyEntry(e)
+    if not gui or not e.o:IsDescendantOf(gui) then return false end
+    if e.fn then e.fn(e.o) end
+    if e.key then e.o.Text = L(e.key) end
+    applyRole(e.o, e.role)
+    return true
+end
+
+local function reg(o, role, key, fn)
+    local e = { o = o, role = role, key = key, fn = fn }
+    table.insert(regs, e)
+    applyEntry(e)
+    return o
+end
+
+local function applyAll()
+    local alive = {}
+    for _, e in ipairs(regs) do
+        if applyEntry(e) then table.insert(alive, e) end
+    end
+    regs = alive
+end
+
+local function frame(parent, role, props)
+    return reg(new("Frame", props, parent), role)
+end
+
+local function label(parent, role, props, key, fn)
+    return reg(new("TextLabel", props, parent), role, key, fn)
+end
+
+local function strokeR(o)
+    local s = new("UIStroke", { Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, o)
+    return reg(s, "border")
+end
+
+local function button(parent, props, key, fn)
+    local defaults = {
+        AutoButtonColor = false, BorderSizePixel = 0, Font = Enum.Font.GothamBold,
+        TextSize = 12, TextWrapped = true,
+    }
+    for k, v in pairs(props) do defaults[k] = v end
+    local b = new("TextButton", defaults, parent)
+    strokeR(b)
+    reg(b, "btn", key, fn)
+    b.MouseButton1Click:Connect(function() sfx(SONS.clique, 0.4) end)
+    return b
+end
+
+local function copyTo(b, text, key)
+    local ok = pcall(setclipboard, text)
+    b.Text = ok and L("copied") or L("noClip")
+    task.delay(1.2, function()
+        if b.Parent then b.Text = L(key) end
+    end)
+end
+
+----------------------------------------------------------------
+-- INTERFACE PRINCIPAL (2D NA TELA - SEM MUNDO 3D)
+----------------------------------------------------------------
+gui = Instance.new("ScreenGui")
+gui.Name = "ChatBotUI_Screen"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 999
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+do
+    local ok, hui = pcall(gethui)
+    local placed = ok and hui and pcall(function() gui.Parent = hui end)
+    if not placed then
+        placed = pcall(function() gui.Parent = game:GetService("CoreGui") end)
+    end
+    if not placed then gui.Parent = LP:WaitForChild("PlayerGui") end
+end
+for _, o in ipairs(gui.Parent:GetChildren()) do
+    if o.Name == "ChatBotUI_Screen" and o ~= gui then o:Destroy() end
+end
+
+-- Limpa resquícios antigos do mundo 3D se houver
+for _, o in ipairs(workspace:GetChildren()) do
+    if o.Name == "PainelChatBot3D" then o:Destroy() end
+end
+
+-- Botão Flutuante Quadrado na Tela para abrir as Configurações Rapidamente
+local btnAbrirConfig = button(gui, {
+    Size = UDim2.fromOffset(40, 40),
+    Position = UDim2.new(0, 15, 0.5, -20),
+    TextSize = 18,
+    Text = "⚙",
+    ZIndex = 1000,
+}, nil)
+
+local main = frame(gui, "bg", {
+    Name = "Main", Active = true, Size = UDim2.fromOffset(W, H),
+    Position = UDim2.new(0.5, -W / 2, 0.5, -H / 2), BorderSizePixel = 0, ClipsDescendants = true,
+})
+strokeR(main)
+
+local titleBar = new("Frame", { Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1, Active = true }, main)
+label(titleBar, "text", {
+    Text = "ChatBot", Position = UDim2.fromOffset(8, 0), Size = UDim2.fromOffset(130, 30),
+    BackgroundTransparency = 1, Font = Enum.Font.GothamBlack, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left,
+})
+local btnCfg = button(titleBar, { Size = UDim2.fromOffset(60, 22), Position = UDim2.fromOffset(142, 4), TextSize = 11 }, "config")
+local btnMin = button(titleBar, { Size = UDim2.fromOffset(26, 22), Position = UDim2.fromOffset(204, 4), TextSize = 13, Text = "—" }, nil)
+local btnClose = button(titleBar, { Size = UDim2.fromOffset(26, 22), Position = UDim2.fromOffset(232, 4), TextSize = 12, Text = "[]" }, nil)
+
+local body = frame(main, "panel", { Position = UDim2.fromOffset(4, 32), Size = UDim2.new(1, -8, 1, -36), BorderSizePixel = 0 })
+strokeR(body)
+
+local function buildBlock()
+    return 'local API_KEY = "' .. API_KEY .. '"\n'
+        .. 'local LANG = "' .. curLang() .. '"\n'
+        .. 'local THEME = "' .. (THEME or "preto") .. '"'
+end
+
+local readyF = frame(main, "panel", {
+    Visible = false, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+    Size = UDim2.fromOffset(W - 16, 236), BorderSizePixel = 0, ZIndex = 10,
+})
+strokeR(readyF)
+label(readyF, "text", {
+    Position = UDim2.fromOffset(8, 6), Size = UDim2.new(1, -40, 0, 22), BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBlack, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left,
+}, "readyTitle")
+local readyX = button(readyF, {
+    Size = UDim2.fromOffset(24, 20), Position = UDim2.new(1, -6, 0, 6), AnchorPoint = Vector2.new(1, 0),
+    TextSize = 11, Text = "X",
+}, nil)
+label(readyF, "text", {
+    Position = UDim2.fromOffset(8, 28), Size = UDim2.new(1, -16, 0, 16), BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBold, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
+}, "readyTop")
+label(readyF, "muted", {
+    Position = UDim2.fromOffset(8, 46), Size = UDim2.new(1, -16, 0, 40), BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham, TextSize = 11, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
+}, "readyNote")
+local readyWrap = frame(readyF, "bg", {
+    Position = UDim2.fromOffset(8, 94), Size = UDim2.new(1, -16, 0, 80), BorderSizePixel = 0, ClipsDescendants = true,
+})
+strokeR(readyWrap)
+local readyBox = reg(new("TextBox", {
+    Size = UDim2.new(1, -12, 1, -8), Position = UDim2.fromOffset(6, 4), BackgroundTransparency = 1, BorderSizePixel = 0,
+    Text = "", ClearTextOnFocus = false, MultiLine = true, TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
+    Font = Enum.Font.Code, TextSize = 11,
+}, readyWrap), "text")
+label(readyF, "muted", {
+    Position = UDim2.fromOffset(8, 180), Size = UDim2.new(1, -16, 0, 22), BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham, TextSize = 10, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
+}, "readyTheme")
+local readyCopy = button(readyF, { Size = UDim2.fromOffset(150, 22), Position = UDim2.fromOffset(8, 206), TextSize = 11 }, "copy")
+readyCopy.MouseButton1Click:Connect(function()
+    copyTo(readyCopy, buildBlock(), "copy")
+end)
+readyX.MouseButton1Click:Connect(function() readyF.Visible = false end)
+
+local function showReady()
+    readyBox.Text = buildBlock()
+    readyF.Visible = true
+end
+
+local helpKey = "helpPasse"
+local helpF = frame(main, "panel", {
+    Visible = false, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+    Size = UDim2.fromOffset(W - 20, 200), BorderSizePixel = 0, ZIndex = 12,
+})
+strokeR(helpF)
+label(helpF, "text", {
+    Position = UDim2.fromOffset(10, 30), Size = UDim2.new(1, -20, 1, -40), BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham, TextSize = 12, TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
+}, nil, function(x) x.Text = L(helpKey) end)
+local helpX = button(helpF, {
+    Size = UDim2.fromOffset(24, 20), Position = UDim2.new(1, -6, 0, 6), AnchorPoint = Vector2.new(1, 0),
+    TextSize = 11, Text = "X",
+}, nil)
+helpX.MouseButton1Click:Connect(function() helpF.Visible = false end)
+
+local function showHelp(k)
+    helpKey = k
+    helpF.Visible = true
+    applyAll()
+end
+
+local goStep
+local applyDecor
+
+----------------------------------------------------------------
+-- TELAS DE SETUP
+----------------------------------------------------------------
+local function keyValid(s)
+    if #s < 25 then return false end
+    if s:sub(1, 3) ~= "sk-" then return false end
+    if s:find("%s") then return false end
+    return true
+end
+local function validLang(l) return l ~= nil and TXT[l] ~= nil end
+local function validTheme(t) return t ~= nil and THEMES[t] ~= nil end
+
+local setupF = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 }, body)
+
+local pgLang = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 }, setupF)
+label(pgLang, "text", {
+    Position = UDim2.fromOffset(8, 12), Size = UDim2.new(1, -16, 0, 24), BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBlack, TextSize = 14, TextWrapped = true,
+}, "langQ")
+for i, code in ipairs(LANG_ORDER) do
+    local b = button(pgLang, {
+        Text = LANGLABEL[code], Size = UDim2.new(1, -40, 0, 34),
+        Position = UDim2.fromOffset(20, 52 + (i - 1) * 44), TextSize = 13,
+    }, nil)
+    b.MouseButton1Click:Connect(function()
+        LANG = code
+        applyAll()
+        goStep("passe")
+    end)
+end
+
+local pgPasse = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 }, setupF)
+label(pgPasse, "text", {
+    Position = UDim2.fromOffset(8, 10), Size = UDim2.new(1, -44, 0, 24), BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBlack, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left,
+}, "passeTitle")
+local passeHelp = button(pgPasse, { Size = UDim2.fromOffset(26, 22), Position = UDim2.new(1, -34, 0, 10), TextSize = 12, Text = "?" }, nil)
+passeHelp.MouseButton1Click:Connect(function() showHelp("helpPasse") end)
+
+local passeWrap = frame(pgPasse, "bg", {
+    Position = UDim2.fromOffset(12, 42), Size = UDim2.new(1, -24, 0, 76), BorderSizePixel = 0, ClipsDescendants = true,
+})
+strokeR(passeWrap)
+local passeBox = reg(new("TextBox", {
+    Size = UDim2.new(1, -12, 1, -8), Position = UDim2.fromOffset(6, 4), BackgroundTransparency = 1, BorderSizePixel = 0,
+    Text = "", ClearTextOnFocus = false, MultiLine = true, TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
+    Font = Enum.Font.Code, TextSize = 11,
+}, passeWrap), "text", nil, function(x)
+    x.PlaceholderText = L("passePh")
+    x.PlaceholderColor3 = theme().muted
+end)
+
+local passeErr = nil
+label(pgPasse, "none", {
+    Position = UDim2.fromOffset(12, 162), Size = UDim2.new(1, -24, 0, 16), BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
+}, nil, function(x)
+    x.Text = passeErr and L(passeErr) or ""
+    x.TextColor3 = RED_BAD
+end)
+
+local passeOk = button(pgPasse, { Size = UDim2.new(0.5, -18, 0, 30), Position = UDim2.fromOffset(12, 126), TextSize = 12 }, "passeOk")
+local passeSkip = button(pgPasse, { Size = UDim2.new(0.5, -18, 0, 30), Position = UDim2.new(0.5, 6, 0, 126), TextSize = 12 }, "passeSkip")
+label(pgPasse, "muted", {
+    Position = UDim2.fromOffset(12, 184), Size = UDim2.new(1, -24, 0, 60), BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham, TextSize = 11, TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
+}, "passeHint")
+
+local function parsePasse(s)
+    return s:match('API_KEY%s*=%s*"([^"]*)"'), s:match('LANG%s*=%s*"([^"]*)"'), s:match('THEME%s*=%s*"([^"]*)"')
+end
+
+passeOk.MouseButton1Click:Connect(function()
+    local k, lg, th = parsePasse(passeBox.Text)
+    if not (k and keyValid(k) and validLang(lg) and validTheme(th)) then
+        passeErr = "passeBad"
+        applyAll()
+        return
+    end
+    passeErr = nil
+    API_KEY = k
+    LANG = lg
+    THEME = th
+    applyAll()
+    applyDecor()
+    goStep("menu")
+end)
+
+passeSkip.MouseButton1Click:Connect(function()
+    passeErr = nil
+    applyAll()
+    goStep("theme")
+end)
+
+local pgTheme = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 }, setupF)
+label(pgTheme, "text", {
+    Position = UDim2.fromOffset(8, 8), Size = UDim2.new(1, -16, 0, 24), BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBlack, TextSize = 14, TextWrapped = true,
+}, "themeQ")
+for i, name in ipairs(THEME_ORDER) do
+    local col = (i - 1) % 2
+    local row = math.floor((i - 1) / 2)
+    local b = button(pgTheme, {
+        Size = UDim2.fromOffset(110, 30), Position = UDim2.fromOffset(12 + col * 122, 42 + row * 36), TextSize = 12,
+    }, "th_" .. name)
+    b.MouseButton1Click:Connect(function()
+        THEME = name
+        applyAll()
+        applyDecor()
+        goStep("key")
+    end)
+end
+label(pgTheme, "muted", {
+    Position = UDim2.fromOffset(8, 188), Size = UDim2.new(1, -16, 0, 16), BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham, TextSize = 11, TextWrapped = true,
+}, "discordMsg")
+label(pgTheme, "muted", {
+    Position = UDim2.fromOffset(8, 206), Size = UDim2.new(1, -16, 0, 16), BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham, TextSize = 10, Text = DISCORD,
+})
+local discordCopy = button(pgTheme, { Size = UDim2.fromOffset(150, 24), Position = UDim2.fromOffset(12, 228), TextSize = 11 }, "discordCopy")
+discordCopy.MouseButton1Click:Connect(function()
+    copyTo(discordCopy, DISCORD, "discordCopy")
+end)
+
+local pgKey = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1 }, setupF)
+label(pgKey, "text", {
+    Position = UDim2.fromOffset(8, 8), Size = UDim2.new(1, -16, 0, 24), BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBlack, TextSize = 14, TextWrapped = true,
+}, "keyTitle")
+
+local keyWrap = frame(pgKey, "bg", {
+    Position = UDim2.fromOffset(12, 42), Size = UDim2.new(1, -24, 0, 30), BorderSizePixel = 0, ClipsDescendants = true,
+})
+strokeR(keyWrap)
+local keyBox = new("TextBox", {
+    Size = UDim2.new(1, -12, 1, 0), Position = UDim2.fromOffset(6, 0), BackgroundTransparency = 1, BorderSizePixel = 0,
+    Text = "", ClearTextOnFocus = false, TextWrapped = false,
+    TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.Code, TextSize = 11,
+}, keyWrap)
+reg(keyBox, "text", nil, function(x)
+    x.PlaceholderText = L("keyPh")
+    x.PlaceholderColor3 = theme().muted
+end)
+
+local keyTyped = ""
+
+local keyStatus = new("TextLabel", {
+    Position = UDim2.fromOffset(12, 80), Size = UDim2.new(1, -24, 0, 24), BorderSizePixel = 0,
+    Font = Enum.Font.GothamBold, TextSize = 12, BackgroundTransparency = 1,
+}, pgKey)
+local function refreshKeyStatus()
+    local v = keyValid(keyTyped)
+    keyStatus.BackgroundTransparency = (keyTyped == "") and 1 or 0
+    keyStatus.BackgroundColor3 = v and GREEN_OK or RED_BAD
+    keyStatus.TextColor3 = Color3.new(1, 1, 1)
+    keyStatus.Text = (keyTyped == "") and "" or (v and L("keyOk") or L("keyBad"))
+end
+reg(keyStatus, "none", nil, refreshKeyStatus)
+
+keyBox:GetPropertyChangedSignal("Text"):Connect(function()
+    keyTyped = keyBox.Text:match("^%s*(.-)%s*$") or ""
+    refreshKeyStatus()
+end)
+
+local keyGo = button(pgKey, { Size = UDim2.new(1, -24, 0, 32), Position = UDim2.fromOffset(12, 114), TextSize = 13 }, "cont")
+keyGo.MouseButton1Click:Connect(function()
+    if not keyValid(keyTyped) then
+        refreshKeyStatus()
+        return
+    end
+    API_KEY = keyTyped
+    showReady()
+    goStep("menu")
+end)
+
+label(pgKey, "muted", {
+    Position = UDim2.fromOffset(12, 156), Size = UDim2.new(1, -24, 0, 34), BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham, TextSize = 11, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
+}, "keyHelp")
+label(pgKey, "muted", {
+    Position = UDim2.fromOffset(12, 192), Size = UDim2.new(1, -24, 0, 16), BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham, TextSize = 10, Text = DISCORD, TextXAlignment = Enum.TextXAlignment.Left,
+})
+
+----------------------------------------------------------------
+-- MENU (abas Chat e Jogo)
+----------------------------------------------------------------
+local menuF = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false }, body)
+local tabBar = new("Frame", { Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 0, 28), BackgroundTransparency = 1 }, menuF)
+local pagesF = new("Frame", { Position = UDim2.fromOffset(4, 38), Size = UDim2.new(1, -8, 1, -42), BackgroundTransparency = 1 }, menuF)
+
+local tabs, pages = {}, {}
+local resetters = {}
+for i, key in ipairs({ "chat", "game" }) do
+    tabs[i] = button(tabBar, { Size = UDim2.new(0.5, -3, 1, 0), Position = UDim2.new(0.5 * (i - 1), 0, 0, 0), TextSize = 12 }, key)
+end
+local function selectTab(i)
+    for k = 1, 2 do
+        pages[k].Visible = (k == i)
+        setOn(tabs[k], k == i)
+    end
+end
+
+local decorF = nil
+applyDecor = function()
+    if decorF then
+        decorF:Destroy()
+        decorF = nil
+    end
+    if THEME ~= "halloween" and THEME ~= "christmas" and THEME ~= "fogo" then return end
+    decorF = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 2 }, main)
+
+    if THEME == "halloween" then
+        local pumpkin = new("Frame", {
+            Size = UDim2.fromOffset(30, 26), Position = UDim2.fromOffset(W - 46, 36),
+            BackgroundColor3 = Color3.fromRGB(255, 120, 20), BorderSizePixel = 0, ZIndex = 2,
+        }, decorF)
+        new("UICorner", { CornerRadius = UDim.new(1, 0) }, pumpkin)
+        local face = Color3.fromRGB(30, 10, 0)
+        new("Frame", { Size = UDim2.fromOffset(5, 5), Position = UDim2.fromOffset(7, 8), BackgroundColor3 = face, BorderSizePixel = 0, ZIndex = 3 }, pumpkin)
+        new("Frame", { Size = UDim2.fromOffset(5, 5), Position = UDim2.fromOffset(18, 8), BackgroundColor3 = face, BorderSizePixel = 0, ZIndex = 3 }, pumpkin)
+        new("Frame", { Size = UDim2.fromOffset(14, 4), Position = UDim2.fromOffset(8, 17), BackgroundColor3 = face, BorderSizePixel = 0, ZIndex = 3 }, pumpkin)
+        new("Frame", { Size = UDim2.fromOffset(6, 6), Position = UDim2.fromOffset(12, -5), BackgroundColor3 = Color3.fromRGB(60, 110, 30), BorderSizePixel = 0, ZIndex = 2 }, pumpkin)
+        for _ = 1, 14 do
+            local f = new("Frame", {
+                Size = UDim2.fromOffset(3, 3), Position = UDim2.fromOffset(math.random(0, W), math.random(0, H)),
+                BackgroundColor3 = Color3.fromRGB(255, 160, 40), BackgroundTransparency = math.random(),
+                BorderSizePixel = 0, ZIndex = 2,
+            }, decorF)
+            TweenService:Create(f, TweenInfo.new(
+                0.6 + math.random() * 1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut,
+                -1, true, math.random() * 2
+            ), { BackgroundTransparency = 1 }):Play()
+        end
+    elseif THEME == "fogo" then
+        for _ = 1, 22 do
+            local sz = math.random(2, 4)
+            local x0 = math.random(0, W)
+            local f = new("Frame", {
+                Size = UDim2.fromOffset(sz, sz), Position = UDim2.fromOffset(x0, H + math.random(0, 20)),
+                BackgroundColor3 = Color3.fromRGB(255, math.random(110, 210), math.random(0, 40)),
+                BackgroundTransparency = 0.1, BorderSizePixel = 0, ZIndex = 2,
+            }, decorF)
+            new("UICorner", { CornerRadius = UDim.new(1, 0) }, f)
+            TweenService:Create(f, TweenInfo.new(
+                2 + math.random() * 2.5, Enum.EasingStyle.Sine, Enum.EasingDirection.Out,
+                -1, false, math.random() * 3
+            ), { Position = UDim2.fromOffset(x0 + math.random(-25, 25), -10), BackgroundTransparency = 1 }):Play()
+        end
+    else
+        for _ = 1, 26 do
+            local sz = math.random(2, 3)
+            local x0 = math.random(0, W)
+            local f = new("Frame", {
+                Size = UDim2.fromOffset(sz, sz), Position = UDim2.fromOffset(x0, -math.random(0, H)),
+                BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.1, BorderSizePixel = 0, ZIndex = 2,
+            }, decorF)
+            TweenService:Create(f, TweenInfo.new(
+                3 + math.random() * 4, Enum.EasingStyle.Linear, Enum.EasingDirection.In,
+                -1, false, math.random() * 4
+            ), { Position = UDim2.fromOffset(x0 + math.random(-12, 12), H + 6) }):Play()
+        end
+    end
+end
+
+----------------------------------------------------------------
+-- EXPLOSÃO E CHAT
+----------------------------------------------------------------
+local function explode(parent, cx, cy)
+    local ring = new("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(cx, cy), Size = UDim2.fromOffset(16, 16),
+        BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 30,
+    }, parent)
+    local ringStroke = new("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2 }, ring)
+    TweenService:Create(ring, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = UDim2.fromOffset(180, 180),
+    }):Play()
+    TweenService:Create(ringStroke, TweenInfo.new(0.45), { Transparency = 1 }):Play()
+    Debris:AddItem(ring, 0.6)
+
+    for i = 1, 16 do
+        local s = math.random(2, 4)
+        local p = new("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(cx, cy), Size = UDim2.fromOffset(s, s),
+            BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, ZIndex = 31,
+        }, parent)
+        local a = math.rad(i * 22.5 + math.random(-6, 6))
+        local d = math.random(40, 100)
+        TweenService:Create(p, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Position = UDim2.fromOffset(cx + math.cos(a) * d, cy + math.sin(a) * d),
+            BackgroundTransparency = 1, Size = UDim2.fromOffset(1, 1),
+        }):Play()
+        Debris:AddItem(p, 0.7)
+    end
+end
+
+local function sendToChat(msg)
+    msg = trim200(msg)
+    local ok = false
+    if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+        local ch = TextChatService:FindFirstChild("TextChannels")
+        local gen = ch and ch:FindFirstChild("RBXGeneral")
+        if gen then ok = pcall(function() gen:SendAsync(msg) end) end
+    else
+        local ev = RS:FindFirstChild("DefaultChatSystemChatEvents")
+        local say = ev and ev:FindFirstChild("SayMessageRequest")
+        if say then ok = pcall(function() say:FireServer(msg, "All") end) end
+    end
+    return ok
+end
+
+local function isNearBottom(sf)
+    return sf.CanvasPosition.Y >= sf.AbsoluteCanvasSize.Y - sf.AbsoluteWindowSize.Y - 40
+end
+local function scrollToBottom(sf)
+    task.delay(0.05, function()
+        if sf.Parent then
+            sf.CanvasPosition = Vector2.new(0, math.max(0, sf.AbsoluteCanvasSize.Y - sf.AbsoluteWindowSize.Y))
+        end
+    end)
+end
+
+----------------------------------------------------------------
+-- ABA CHAT
+----------------------------------------------------------------
+local function chatSystem()
+    return "You are a friendly AI assistant inside a Roblox game menu. Chat naturally and give game tips when asked. Always reply in "
+        .. LANGNAME[curLang()] .. "."
+end
+
+local pChat = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false }, pagesF)
+pages[1] = pChat
+
+local scroll = new("ScrollingFrame", {
+    Size = UDim2.new(1, 0, 1, -40), BorderSizePixel = 0, ScrollBarThickness = 3,
+    ScrollBarImageColor3 = Color3.fromRGB(150, 150, 150),
+    CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, pChat)
+reg(scroll, "bg")
+strokeR(scroll)
+new("UIListLayout", { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder }, scroll)
+pad(scroll, 5, 5, 7, 5)
+
+local box = new("TextBox", {
+    Size = UDim2.new(1, -66, 0, 30), Position = UDim2.new(0, 0, 1, -30), BorderSizePixel = 0,
+    Text = "", ClearTextOnFocus = false, Font = Enum.Font.Gotham, TextSize = 13,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, pChat)
+reg(box, "bg")
+reg(box, "text", nil, function(x)
+    x.PlaceholderText = L("placeholder")
+    x.PlaceholderColor3 = theme().muted
+end)
+strokeR(box)
+pad(box, 6, 0, 6, 0)
+
+local send = button(pChat, { Size = UDim2.fromOffset(60, 30), Position = UDim2.new(1, -60, 1, -30), TextSize = 12 }, "send")
+setOn(send, true)
+
+local n = 0
+local history, epoch = {}, 0
+local jobs = {}
+local working = false
+local waitRow = nil
+
+local function addBubble(text, who, force, digitar)
+    local nearBottom = isNearBottom(scroll)
+    n = n + 1
+    local align = Enum.HorizontalAlignment.Left
+    if who == "user" then
+        align = Enum.HorizontalAlignment.Right
+    elseif who == "sys" then
+        align = Enum.HorizontalAlignment.Center
+    end
+    local row = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1, LayoutOrder = n,
+    }, scroll)
+    new("UIListLayout", { Padding = UDim.new(0, 3), HorizontalAlignment = align, SortOrder = Enum.SortOrder.LayoutOrder }, row)
+
+    local lbl
+    if who == "sys" then
+        lbl = label(row, "muted", {
+            Text = text, LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+            BackgroundTransparency = 1, TextWrapped = true, Font = Enum.Font.Gotham, TextSize = 11,
+            TextXAlignment = Enum.TextXAlignment.Center,
+        })
+    else
+        local shown = (who == "ai") and clean(text) or text
+        lbl = label(row, "text", {
+            Text = digitar and "" or shown, LayoutOrder = 1, Size = UDim2.new(0.86, 0, 0, 0),
+            AutomaticSize = Enum.AutomaticSize.Y, BorderSizePixel = 0, TextWrapped = true,
+            Font = Enum.Font.Gotham, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left,
+        })
+        reg(lbl, "panel")
+        strokeR(lbl)
+        pad(lbl, 7, 5, 7, 5)
+        local cp = button(row, { Size = UDim2.fromOffset(80, 20), TextSize = 10, LayoutOrder = 2 }, "copy")
+        cp.MouseButton1Click:Connect(function() copyTo(cp, text, "copy") end)
+    end
+
+    if force or nearBottom then scrollToBottom(scroll) end
+    return row, lbl
+end
+
+local function trimHistory()
+    while #history > 20 or (history[1] and history[1].role ~= "user") do
+        table.remove(history, 1)
+    end
+end
+
+local function digitarNoBalao(lbl, texto, cancelado, depois)
+    local visivel = clean(texto)
+    local ok, total = pcall(utf8.len, visivel)
+    if not ok or not total then
+        lbl.Text = visivel
+        if depois then depois() end
+        return
+    end
+    if total == 0 then
+        if depois then depois() end
+        return
+    end
+
+    local porTick = math.max(1, math.ceil(total / 260))
+    local feitos = 0
+    local tick = 0
+
+    task.spawn(function()
+        while feitos < total do
+            if cancelado() then return end
+
+            local pertoDoFim = isNearBottom(scroll)
+            feitos = math.min(total, feitos + porTick)
+            local fim = utf8.offset(visivel, feitos + 1)
+            lbl.Text = fim and visivel:sub(1, fim - 1) or visivel
+
+            tick = tick + 1
+            if tick % 4 == 0 then sfx(SONS.digitar, 0.15) end
+            if pertoDoFim then scrollToBottom(scroll) end
+            task.wait(0.03)
+        end
+
+        if not cancelado() and depois then depois() end
+    end)
+end
+
+local runNext
+runNext = function()
+    if working or #jobs == 0 or not running then return end
+    working = true
+    local job = table.remove(jobs, 1)
+    local myEpoch = epoch
+    local fila = #jobs
+    waitRow = addBubble(L("thinking") .. (fila > 0 and (" · " .. L("queue") .. ": " .. fila) or "") .. "...", "sys")
+
+    local snapshot = {}
+    for i, h in ipairs(history) do snapshot[i] = h end
+    table.insert(snapshot, { role = "user", parts = { { text = job.text } } })
+
+    AI.ask(chatSystem(), snapshot, function(reply, err)
+        if not running or myEpoch ~= epoch then return end
+        if waitRow and waitRow.Parent then waitRow:Destroy() end
+        waitRow = nil
+
+        if reply then
+            table.insert(history, { role = "user", parts = { { text = job.text } } })
+            table.insert(history, { role = "model", parts = { { text = reply } } })
+            trimHistory()
+            sfx(SONS.msg, 0.4)
+            if THEME == "halloween" then sfx(SONS.abobora, 0.3) end
+
+            local row, lbl = addBubble(reply, "ai", false, true)
+            digitarNoBalao(lbl, reply,
+                function() return not running or myEpoch ~= epoch or not row.Parent end,
+                function()
+                    working = false
+                    runNext()
+                end)
+        else
+            working = false
+            addBubble(L("err") .. ": " .. tostring(err), "sys")
+            runNext()
+        end
+    end)
+end
+
+local function submit()
+    if not running then return end
+    local txt = box.Text:match("^%s*(.-)%s*$")
+    if not txt or txt == "" then return end
+    box.Text = ""
+    addBubble(txt, "user", true)
+    table.insert(jobs, { text = txt })
+    runNext()
+end
+
+local function resetChat()
+    epoch = epoch + 1
+    history = {}
+    jobs = {}
+    working = false
+    waitRow = nil
+    for _, child in ipairs(scroll:GetChildren()) do
+        if child:IsA("Frame") then child:Destroy() end
+    end
+    addBubble(L("hello"), "sys")
+end
+table.insert(resetters, resetChat)
+
+send.MouseButton1Click:Connect(submit)
+box.FocusLost:Connect(function(enter)
+    if enter then submit() end
+end)
+
+addBubble(L("hello"), "sys")
+
+----------------------------------------------------------------
+-- ABA JOGO
+----------------------------------------------------------------
+local pJogo = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false }, pagesF)
+pages[2] = pJogo
+
+local gameOn = false
+local pending = nil
+local inbox, chatLog, rowsOnScreen = {}, {}, {}
+local chatSeq = 0
+
+local jogoHelpBtn = button(pJogo, { Size = UDim2.fromOffset(28, 28), Position = UDim2.fromOffset(0, 0), TextSize = 13, Text = "?" }, nil)
+jogoHelpBtn.MouseButton1Click:Connect(function() showHelp("helpJogo") end)
+
+local toggle = button(pJogo, { Size = UDim2.new(1, -34, 0, 28), Position = UDim2.fromOffset(34, 0), TextSize = 12 }, nil, function(x)
+    x.Text = L("playerMode") .. ": " .. (gameOn and "ON" or "OFF")
+    x:SetAttribute("on", gameOn)
+end)
+paintBtn(toggle)
+
+local hint = label(pJogo, "muted", {
+    Position = UDim2.fromOffset(0, 36), Size = UDim2.new(1, 0, 0, 36), BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham, TextSize = 12, TextWrapped = true,
+}, "hint")
+
+local listF = new("ScrollingFrame", {
+    Visible = false, Position = UDim2.fromOffset(0, 34), Size = UDim2.new(1, 0, 0, 96), BorderSizePixel = 0,
+    ScrollBarThickness = 3, ScrollBarImageColor3 = Color3.fromRGB(150, 150, 150),
+    CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, pJogo)
+reg(listF, "bg")
+strokeR(listF)
+new("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, listF)
+pad(listF, 3, 3, 5, 3)
+
+local card = new("Frame", {
+    Visible = false, Position = UDim2.fromOffset(0, 136), Size = UDim2.new(1, 0, 0, 86), BackgroundTransparency = 1,
+}, pJogo)
+local resLabel = label(card, "text", {
+    Size = UDim2.new(1, 0, 0, 52), BorderSizePixel = 0, Font = Enum.Font.Gotham, TextSize = 12,
+    TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, Text = "",
+})
+reg(resLabel, "bg")
+strokeR(resLabel)
+pad(resLabel, 6, 4, 6, 4)
+local pasteBtn = button(card, { Size = UDim2.new(1, -34, 0, 28), Position = UDim2.fromOffset(0, 56), TextSize = 12 }, "paste")
+setOn(pasteBtn, true)
+pasteBtn.Visible = false
+
+local delBtn = new("TextButton", {
+    AutoButtonColor = false, BorderSizePixel = 0, Font = Enum.Font.GothamBold, TextSize = 12,
+    Text = "X", Size = UDim2.fromOffset(28, 28), Position = UDim2.new(1, -28, 0, 56), Visible = false,
+}, card)
+strokeR(delBtn)
+reg(delBtn, "none", nil, function(x)
+    x.BackgroundColor3 = RED_BAD
+    x.TextColor3 = Color3.new(1, 1, 1)
+end)
+
+local popup = frame(pJogo, "panel", {
+    Visible = false, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 40),
+    Size = UDim2.fromOffset(200, 96), BorderSizePixel = 0, ZIndex = 10,
+})
+strokeR(popup)
+label(popup, "text", {
+    Position = UDim2.fromOffset(8, 6), Size = UDim2.new(1, -40, 0, 22), BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBold, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
+}, "askQ")
+local popClose = button(popup, {
+    Size = UDim2.fromOffset(24, 20), Position = UDim2.new(1, -6, 0, 6), AnchorPoint = Vector2.new(1, 0),
+    TextSize = 11, Text = "x",
+}, nil)
+local bAns = button(popup, { Size = UDim2.new(0.5, -12, 0, 40), Position = UDim2.fromOffset(8, 40), TextSize = 12 }, "answer")
+local bAsk = button(popup, { Size = UDim2.new(0.5, -12, 0, 40), Position = UDim2.new(0.5, 4, 0, 40), TextSize = 12 }, "question")
+
+local jogoJobs, jogoResults = {}, {}
+local jogoWorking, jogoEpoch = false, 0
+local jogoMsg = ""
+
+local function refreshCard()
+    if #jogoResults == 0 then
+        if jogoMsg ~= "" then
+            card.Visible = true
+            resLabel.Text = jogoMsg
+        elseif jogoWorking or #jogoJobs > 0 then
+            card.Visible = true
+            local fila = #jogoJobs
+            resLabel.Text = L("generating") .. (fila > 0 and (" (" .. L("queue") .. ": " .. fila .. ")") or "")
+        else
+            card.Visible = false
+        end
+        pasteBtn.Visible = false
+        delBtn.Visible = false
+        return
+    end
+    card.Visible = true
+    local extra = (#jogoResults > 1) and ("\n(+" .. (#jogoResults - 1) .. " " .. L("queue") .. ")") or ""
+    resLabel.Text = jogoResults[1] .. extra
+    pasteBtn.Visible = true
+    delBtn.Visible = true
+    pasteBtn.Size = UDim2.new(1, -34, 0, 28)
+end
+
+local function celebrate()
+    pasteBtn.Size = UDim2.new(1, -34, 0, 0)
+    TweenService:Create(pasteBtn, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = UDim2.new(1, -34, 0, 28),
+    }):Play()
+    local base = card.AbsolutePosition - main.AbsolutePosition
+    explode(main, base.X + card.AbsoluteSize.X / 2, base.Y + 70)
+    sfx(SONS.explosao, 0.6)
+end
+
+local function playerSystem()
+    return JOGO_PROMPTS[curLang()].system
+end
+
+local function jogoNext()
+    if jogoWorking or #jogoJobs == 0 or not running then return end
+    jogoWorking = true
+    local job = table.remove(jogoJobs, 1)
+    local myEpoch = jogoEpoch
+    jogoMsg = ""
+    refreshCard()
+
+    local P = JOGO_PROMPTS[curLang()]
+    local order = (job.kind == "resposta") and P.answer or P.question
+    local prompt = P.from .. job.msg.name .. ': "' .. job.msg.text .. '"\n\n' .. order
+
+    AI.ask(playerSystem(), { { role = "user", parts = { { text = prompt } } } }, function(reply, err)
+        if not running or myEpoch ~= jogoEpoch then return end
+        jogoWorking = false
+        if reply then
+            local r = reply:gsub("\n", " ")
+            r = r:match('^%s*"?(.-)"?%s*$') or r
+            table.insert(jogoResults, trim200(r))
+            refreshCard()
+            sfx(SONS.ok, 0.5)
+            if #jogoResults == 1 then celebrate() end
+        else
+            jogoMsg = L("err") .. ": " .. tostring(err)
+            refreshCard()
+        end
+        jogoNext()
+    end)
+end
+
+local function queueJob(kind)
+    if not pending then return end
+    table.insert(jogoJobs, { kind = kind, msg = pending })
+    pending = nil
+    popup.Visible = false
+    refreshCard()
+    jogoNext()
+end
+
+local function resetJogo()
+    jogoEpoch = jogoEpoch + 1
+    jogoJobs, jogoResults = {}, {}
+    jogoWorking = false
+    jogoMsg = ""
+    pending = nil
+    popup.Visible = false
+    refreshCard()
+end
+table.insert(resetters, resetJogo)
+
+delBtn.MouseButton1Click:Connect(function()
+    sfx(SONS.clique, 0.4)
+    if #jogoResults == 0 then return end
+    table.remove(jogoResults, 1)
+    refreshCard()
+end)
+
+bAns.MouseButton1Click:Connect(function() queueJob("resposta") end)
+bAsk.MouseButton1Click:Connect(function() queueJob("pergunta") end)
+popClose.MouseButton1Click:Connect(function() popup.Visible = false end)
+
+pasteBtn.MouseButton1Click:Connect(function()
+    local text = jogoResults[1]
+    if not text then return end
+    if sendToChat(text) then
+        table.remove(jogoResults, 1)
+        if #jogoResults == 0 then jogoMsg = L("sent") end
+        refreshCard()
+    else
+        resLabel.Text = L("sendFail")
+    end
+end)
+
+local function renderChatRow(item)
+    chatSeq = chatSeq + 1
+    local row = frame(listF, "panel", {
+        Size = UDim2.new(1, 0, 0, 34), BorderSizePixel = 0, LayoutOrder = chatSeq,
+    })
+    strokeR(row)
+    label(row, "text", {
+        Text = item.name .. ": " .. item.text, Size = UDim2.new(1, -70, 1, 0), Position = UDim2.fromOffset(5, 0),
+        BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextSize = 11, TextWrapped = false,
+        TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Left,
+    })
+    local add = button(row, {
+        Size = UDim2.fromOffset(60, 24), Position = UDim2.new(1, -3, 0.5, 0),
+        AnchorPoint = Vector2.new(1, 0.5), TextSize = 11,
+    }, "add")
+    add.MouseButton1Click:Connect(function()
+        pending = { name = item.name, text = item.text }
+        popup.Visible = true
+    end)
+    table.insert(rowsOnScreen, row)
+    while #rowsOnScreen > 60 do
+        local old = table.remove(rowsOnScreen, 1)
+        local h = old.AbsoluteSize.Y + 3
+        old:Destroy()
+        if listF.CanvasPosition.Y > 0 then
+            listF.CanvasPosition = Vector2.new(0, math.max(0, listF.CanvasPosition.Y - h))
+        end
+    end
+end
+
+local function clearRows()
+    for _, r in ipairs(rowsOnScreen) do r:Destroy() end
+    rowsOnScreen = {}
+end
+
+local function addToList(item)
+    table.insert(chatLog, item)
+    while #chatLog > 200 do table.remove(chatLog, 1) end
+    if not gameOn then return end
+    local nearBottom = isNearBottom(listF)
+    renderChatRow(item)
+    if nearBottom then scrollToBottom(listF) end
+end
+
+local function rebuildList()
+    clearRows()
+    for i = math.max(1, #chatLog - 59), #chatLog do
+        renderChatRow(chatLog[i])
+    end
+    scrollToBottom(listF)
+end
+
+local function pushMsg(name, text)
+    if not running or not text or text == "" then return end
+    table.insert(inbox, { name = name, text = text })
+    while #inbox > 500 do table.remove(inbox, 1) end
+end
+
+toggle.MouseButton1Click:Connect(function()
+    gameOn = not gameOn
+    listF.Visible = gameOn
+    hint.Visible = not gameOn
+    if gameOn then
+        rebuildList()
+    else
+        clearRows()
+        popup.Visible = false
+    end
+    applyAll()
+end)
+
+----------------------------------------------------------------
+-- PAINEL DE CONFIGURAÇÕES (AGORA ACESSÍVEL DIRETAMENTE)
+----------------------------------------------------------------
+local cfg = new("ScrollingFrame", {
+    Visible = false, Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 0, 262),
+    BorderSizePixel = 0, ZIndex = 5,
+    ScrollBarThickness = 4, ScrollBarImageColor3 = Color3.fromRGB(150, 150, 150),
+    CanvasSize = UDim2.new(0, 0, 0, 480), ScrollingDirection = Enum.ScrollingDirection.Y,
+}, body)
+reg(cfg, "panel")
+strokeR(cfg)
+
+label(cfg, "text", {
+    Position = UDim2.fromOffset(0, 6), Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBlack, TextSize = 13,
+}, "cfgTitle")
+
+for i, m in ipairs(MODE_LIST) do
+    local b = button(cfg, { Size = UDim2.new(1, -20, 0, 32), Position = UDim2.fromOffset(10, 30 + (i - 1) * 38), TextSize = 11 }, nil, function(x)
+        local on = (AI.mode == m.key)
+        x:SetAttribute("on", on)
+        x.Text = L(m.lk) .. (on and "  ● ON" or "  ○ OFF")
+    end)
+    b.MouseButton1Click:Connect(function()
+        if AI.mode == m.key then
+            AI.mode = nil
+        else
+            AI.mode = m.key
+        end
+        applyAll()
+    end)
+end
+
+label(cfg, "muted", {
+    Position = UDim2.fromOffset(0, 144), Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham, TextSize = 11,
+}, nil, function(x)
+    local cur = nil
+    for _, m in ipairs(MODE_LIST) do
+        if AI.mode == m.key then cur = m.lk end
+    end
+    x.Text = cur and (L("active") .. L(cur)) or L("noMode")
+end)
+
+local btnNova = button(cfg, { Size = UDim2.new(1, -20, 0, 26), Position = UDim2.fromOffset(10, 168), TextSize = 11 }, "newConv")
+btnNova.MouseButton1Click:Connect(function()
+    for _, reset in ipairs(resetters) do reset() end
+    cfg.Visible = false
+end)
+
+local btnTheme = button(cfg, { Size = UDim2.new(1, -20, 0, 26), Position = UDim2.fromOffset(10, 200), TextSize = 11 }, nil, function(x)
+    x.Text = L("theme") .. L("th_" .. (THEME or "preto"))
+end)
+btnTheme.MouseButton1Click:Connect(function()
+    local idx = 1
+    for i, name in ipairs(THEME_ORDER) do
+        if name == (THEME or "preto") then idx = i end
+    end
+    THEME = THEME_ORDER[idx % #THEME_ORDER + 1]
+    applyAll()
+    applyDecor()
+    sfx(SONS.clique, 0.4)
+end)
+
+local btnLang = button(cfg, { Size = UDim2.new(1, -20, 0, 26), Position = UDim2.fromOffset(10, 232), TextSize = 11 }, nil, function(x)
+    x.Text = L("lang") .. LANGLABEL[curLang()]
+end)
+btnLang.MouseButton1Click:Connect(function()
+    local idx = 1
+    for i, c in ipairs(LANG_ORDER) do
+        if c == curLang() then idx = i end
+    end
+    LANG = LANG_ORDER[idx % #LANG_ORDER + 1]
+    applyAll()
+end)
+
+for _, s in ipairs(SoundService:GetChildren()) do
+    if s.Name == "BoomboxIA" then s:Destroy() end
+end
+local music = new("Sound", { Name = "BoomboxIA", Looped = true, Volume = 0.4 }, SoundService)
+local musicPlaying, musicId, musicMsg = false, nil, "musicNone"
+
+label(cfg, "text", {
+    Position = UDim2.fromOffset(10, 274), Size = UDim2.new(1, -20, 0, 18), BackgroundTransparency = 1,
+    Font = Enum.Font.GothamBlack, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
+}, "musicTitle")
+
+local musicWrap = frame(cfg, "bg", {
+    Position = UDim2.fromOffset(10, 294), Size = UDim2.new(1, -20, 0, 26), BorderSizePixel = 0, ClipsDescendants = true,
+})
+strokeR(musicWrap)
+local musicBox = reg(new("TextBox", {
+    Size = UDim2.new(1, -12, 1, 0), Position = UDim2.fromOffset(6, 0), BackgroundTransparency = 1, BorderSizePixel = 0,
+    Text = "", ClearTextOnFocus = false, TextWrapped = false,
+    TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.Code, TextSize = 11,
+}, musicWrap), "text", nil, function(x)
+    x.PlaceholderText = L("musicPh")
+    x.PlaceholderColor3 = theme().muted
+end)
+
+local musicBtn = button(cfg, { Size = UDim2.new(1, -20, 0, 26), Position = UDim2.fromOffset(10, 326), TextSize = 11 }, nil, function(x)
+    x.Text = musicPlaying and L("musicStop") or L("musicPlay")
+    x:SetAttribute("on", musicPlaying)
+end)
+
+local function musicStatusFn(x)
+    if musicPlaying then
+        x.Text = L("musicPlaying") .. musicId
+        x.TextColor3 = theme().muted
+    else
+        x.Text = L(musicMsg)
+        x.TextColor3 = (musicMsg == "musicBad") and RED_BAD or theme().muted
+    end
+end
+label(cfg, "none", {
+    Position = UDim2.fromOffset(10, 356), Size = UDim2.new(1, -20, 0, 16), BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham, TextSize = 10, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
+}, nil, musicStatusFn)
+
+musicBtn.MouseButton1Click:Connect(function()
+    if musicPlaying then
+        music:Stop()
+        musicPlaying = false
+        musicMsg = "musicNone"
+    else
+        local id = musicBox.Text:match("%d+")
+        if not id then
+            musicMsg = "musicBad"
+        else
+            local ok = pcall(function()
+                music.SoundId = "rbxassetid://" .. id
+                music:Play()
+            end)
+            if ok then
+                musicPlaying = true
+                musicId = id
+                musicMsg = "musicNone"
+            else
+                musicMsg = "musicBad"
+            end
+        end
+    end
+    applyAll()
+end)
+
+----------------------------------------------------------------
+-- CONTROLE DE INTERFACE E ARRASTAR NA TELA
+----------------------------------------------------------------
+local minimized = false
+
+-- Abertura de Configurações pelo botão flutuante independente ⚙ na tela
+btnAbrirConfig.MouseButton1Click:Connect(function()
+    if not minimized then
+        cfg.Visible = not cfg.Visible
+        cfg.CanvasPosition = Vector2.new(0, 0)
+    end
+end)
+
+goStep = function(step)
+    setupF.Visible = (step ~= "menu")
+    menuF.Visible = (step == "menu")
+    pgLang.Visible = (step == "lang")
+    pgPasse.Visible = (step == "passe")
+    pgTheme.Visible = (step == "theme")
+    pgKey.Visible = (step == "key")
+    if step == "menu" then cfg.Visible = false end
+end
+
+local startStep
+if keyValid(API_KEY) and validLang(LANG) and validTheme(THEME) then
+    startStep = "menu"
+elseif not validLang(LANG) then
+    startStep = "lang"
+elseif not validTheme(THEME) then
+    startStep = "theme"
+else
+    startStep = "key"
+end
+
+goStep(startStep)
+applyAll()
+applyDecor()
+selectTab(1)
+
+----------------------------------------------------------------
+-- CONEXÕES GERAIS E ARRASTAR DA JANELA
+----------------------------------------------------------------
+if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+    track(TextChatService.MessageReceived:Connect(function(m)
+        local src = m.TextSource
+        if not src then return end
+        local p = Players:GetPlayerByUserId(src.UserId)
+        pushMsg(p and p.DisplayName or "?", m.Text)
+    end))
+else
+    local function hook(p)
+        track(p.Chatted:Connect(function(msg) pushMsg(p.DisplayName, msg) end))
+    end
+    for _, p in ipairs(Players:GetPlayers()) do hook(p) end
+    track(Players.PlayerAdded:Connect(hook))
+end
+
+track(RunService.Heartbeat:Connect(function()
+    local budget = 10
+    while budget > 0 and #inbox > 0 do
+        addToList(table.remove(inbox, 1))
+        budget = budget - 1
+    end
+end))
+
+for i = 1, 2 do
+    tabs[i].MouseButton1Click:Connect(function() selectTab(i) end)
+end
+
+btnCfg.MouseButton1Click:Connect(function()
+    if not minimized then
+        cfg.Visible = not cfg.Visible
+        cfg.CanvasPosition = Vector2.new(0, 0)
+    end
+end)
+
+btnMin.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    body.Visible = not minimized
+    cfg.Visible = false
+    TweenService:Create(main, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+        Size = UDim2.fromOffset(W, minimized and 30 or H),
+    }):Play()
+    sfx(SONS.clique, 0.6)
+end)
+
+btnClose.MouseButton1Click:Connect(function()
+    sfx(SONS.explosao, 0.7)
+    running = false
+    music:Stop()
+    explode(main, W / 2, H / 2)
+    task.wait(0.5)
+    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+    gui:Destroy()
+end)
+
+local dragging, dragStart, startPos = false, nil, nil
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging, dragStart, startPos = true, input.Position, main.Position
+    end
+end)
+track(UIS.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local d = input.Position - dragStart
+        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+    end
+end))
+track(UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end))
